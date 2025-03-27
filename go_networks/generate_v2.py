@@ -48,8 +48,9 @@ NCX_CACHE = cache.module("ncx_cache")
 DEFAULT_NDEX_SERVER = "http://ndexbio.org"
 TEST_GO_ID = None
 
-min_gene_count = 5
-max_gene_count = 200
+MIN_GENE_COUNT = 5
+MAX_GENE_COUNT = 200
+DB_SOURCES = ["biogrid", "hprd", "signor", "phosphoelm", "signor", "biopax"]
 
 logger = logging.getLogger(__name__)
 
@@ -142,9 +143,7 @@ def get_sif_from_cogex(limit: Optional[int] = None, with_apoc: bool = True) -> p
         gene1 <> gene2 AND
         // Filter out non-HGNC nodes
         gene1.id CONTAINS 'hgnc' AND
-        gene2.id CONTAINS 'hgnc' AND
-        // Filter out relations with only one evidence and from a reader
-        NOT (r.evidence_count = 1 AND r.has_reader_evidence)
+        gene2.id CONTAINS 'hgnc'
         {apoc_filter}
     RETURN gene1, gene2, r.belief, r.evidence_count, r.source_counts, r.stmt_hash, r.stmt_type
     """)
@@ -156,10 +155,17 @@ def get_sif_from_cogex(limit: Optional[int] = None, with_apoc: bool = True) -> p
             "WITH gene1, gene2, r, "
             "apoc.convert.fromJsonMap(r.source_counts) AS source_counts"
         )
-        apoc_filter = (
-            "// Filter out Complex statements with only sparser as source\n"
-            "    AND NOT (r.stmt_type = 'Complex' AND keys(source_counts) = ['sparser'])"
-        )
+        apoc_filter = dedent(f"""\
+            // Filter out Complex statements with only sparser as source
+            AND NOT (r.stmt_type = 'Complex' AND keys(source_counts) = ['sparser'])
+            // Filter out relations with only one evidence and from a reader
+            AND NOT (
+                r.evidence_count = 1 AND
+                NOT apoc.coll.intersection(
+                    keys(source_counts),
+                    {DB_SOURCES}
+                )
+            )""")
     else:
         apoc_filter = ""
         apoc_with_clause = ""
@@ -190,6 +196,10 @@ def get_sif_from_cogex(limit: Optional[int] = None, with_apoc: bool = True) -> p
             # Filter out Complex statements with only sparser as source
             source_counts = json.loads(r[4])
             if r[6] == "Complex" and {"sparser"} == set(source_counts):
+                continue
+            # Filter out relations with only one evidence and from a reader
+            # (i.e. not in DB_SOURCES)
+            if int(r[3]) == 1 and not set(source_counts).intersection(DB_SOURCES):
                 continue
         res_tuples.append(
             (
@@ -477,7 +487,7 @@ def filter_go_ids(go2genes_map) -> Dict[str, Set[str]]:
     return {
         go_id: genes
         for go_id, genes in tqdm(go2genes_map.items(), desc="Filtering GO IDs")
-        if min_gene_count <= len(genes) <= max_gene_count
+        if MIN_GENE_COUNT <= len(genes) <= MAX_GENE_COUNT
     }
 
 
