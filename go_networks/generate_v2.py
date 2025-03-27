@@ -1,6 +1,7 @@
 """
 Generate GO Networks from a list of GO terms and the Sif dump.
 """
+import json
 import logging
 import pickle
 from collections import defaultdict
@@ -12,6 +13,7 @@ from typing import Dict, Iterator, Optional, Set, Tuple, Union, List
 import ndex2.client
 import pandas as pd
 import pystow
+from neo4j.exceptions import CypherSyntaxError
 from indra.ontology.bio import bio_ontology
 from indra_cogex.client.neo4j_client import Neo4jClient
 from indra_cogex.representation import Node
@@ -109,7 +111,7 @@ def get_curation_set() -> Set[int]:
     return hashes_out
 
 
-def get_sif_from_cogex(limit: Optional[int] = None) -> pd.DataFrame:
+def get_sif_from_cogex(limit: Optional[int] = None, with_apoc: bool = True) -> pd.DataFrame:
     """Get the SIF from the database
 
     Conditions:
@@ -117,47 +119,78 @@ def get_sif_from_cogex(limit: Optional[int] = None) -> pd.DataFrame:
         - Only HGNC nodes
         - Skip relations where evidence_count == 1 AND source is a reader
         - Skip relations where stmt_type == 'Complex' AND sparser is the only
-          source
+          source, for any evidence count
 
     Parameters
     ----------
     limit :
         Limit the number of edges to return. Useful for testing or debugging.
+    with_apoc :
+        If True, use the apoc library to perform some of the filtering directly
+        in the query. If False, perform that filtering in Python.
 
     Returns
     -------
     :
         A pandas DataFrame with the SIF data
     """
-    query = dedent(
-        """
+    query_fmt = dedent("""\
     MATCH (gene1:BioEntity)-[r:indra_rel]-(gene2:BioEntity)
-    WITH gene1, gene2, r, apoc.convert.fromJsonMap(r.source_counts) AS source_counts
+    {apoc_with_clause}
     WHERE
+        // Filter out self loops
         gene1 <> gene2 AND
+        // Filter out non-HGNC nodes
         gene1.id CONTAINS 'hgnc' AND
         gene2.id CONTAINS 'hgnc' AND
-        NOT (r.stmt_type = 'Complex' AND keys(source_counts) = ['sparser']) AND
-        NOT (
-            r.evidence_count = 1 AND
-            NOT apoc.coll.intersection(
-                keys(source_counts),
-                ["biogrid", "hprd", "signor", "phosphoelm", "signor", "biopax"]
-            )
-        )
+        // Filter out relations with only one evidence and from a reader
+        NOT (r.evidence_count = 1 AND r.has_reader_evidence)
+        {apoc_filter}
     RETURN gene1, gene2, r.belief, r.evidence_count, r.source_counts, r.stmt_hash, r.stmt_type
-    """
-    )
+    """)
     if limit is not None and isinstance(limit, int):
-        query += f"LIMIT {limit}"
+        query_fmt += f"LIMIT {limit}"
+
+    if with_apoc:
+        apoc_with_clause = (
+            "WITH gene1, gene2, r, "
+            "apoc.convert.fromJsonMap(r.source_counts) AS source_counts"
+        )
+        apoc_filter = (
+            "// Filter out Complex statements with only sparser as source\n"
+            "    AND NOT (r.stmt_type = 'Complex' AND keys(source_counts) = ['sparser'])"
+        )
+    else:
+        apoc_filter = ""
+        apoc_with_clause = ""
+
+    query = query_fmt.format(
+        apoc_with_clause=apoc_with_clause, apoc_filter=apoc_filter
+    )
+
     n4j_client = Neo4jClient()
     logger.info("Getting SIF interaction data from database")
-    results = n4j_client.query_tx(query)
+    if with_apoc:
+        try:
+            results = n4j_client.query_tx(query)
+        except CypherSyntaxError:
+            logger.warning("Failed to get SIF from database with apoc query, trying without")
+            with_apoc = False
+            query = query_fmt.format(apoc_with_clause="", apoc_filter="")
+
+    if not with_apoc:
+        results = n4j_client.query_tx(query)
+
     res_tuples = []
     logger.info("Generating SIF from database results")
     for r in tqdm(results):
         gene1 = n4j_client.neo4j_to_node(r[0])
         gene2 = n4j_client.neo4j_to_node(r[1])
+        if not with_apoc:
+            # Filter out Complex statements with only sparser as source
+            source_counts = json.loads(r[4])
+            if r[6] == "Complex" and {"sparser"} == set(source_counts):
+                continue
         res_tuples.append(
             (
                 gene1.db_ns,  # agA_ns
