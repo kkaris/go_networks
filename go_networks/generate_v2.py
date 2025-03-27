@@ -347,7 +347,7 @@ def generate_props(
     return props_by_pair
 
 
-def go_term_gene_query() -> Iterator[Tuple[Node, Node]]:
+def go_term_gene_query() -> Iterator[Tuple[str, str]]:
     """An Iterator of go-term gene pairs
 
     Returns
@@ -356,13 +356,11 @@ def go_term_gene_query() -> Iterator[Tuple[Node, Node]]:
         An iterable of pairs of go term node with associated gene node
     """
     query = (
-        "MATCH (gene:BioEntity)-[:associated_with]->(term:BioEntity) RETURN term, gene"
+        "MATCH (gene:BioEntity)-[:associated_with]->(term:BioEntity) "
+        "RETURN term.id, gene.name"
     )
     client = Neo4jClient()
-    return (
-        (client.neo4j_to_node(r[0]), client.neo4j_to_node(r[1]))
-        for r in client.query_tx(query)
-    )
+    return client.query_tx(query)
 
 
 def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
@@ -388,8 +386,11 @@ def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
 
     # Set initial mapping
     genes_by_go = defaultdict(set)
-    for go_node, gene in tqdm(go_term_gene_query(), desc="Loading from database"):
-        genes_by_go[go_node.db_id].add(gene.data["name"])
+    for go_curie, gene_symbol in tqdm(go_term_gene_query(),
+                                      desc="Loading GO-gene associations"):
+        # Use upper case for GO IDs so we get GO:0001234 instead of go:0001234 so that
+        # it corresponds to the bio_ontology
+        genes_by_go[go_curie.upper()].add(gene_symbol)
 
     # Load bio ontology
     logger.info("Adding genes of child terms to the parent terms")
@@ -397,7 +398,8 @@ def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
 
     # For each term, add the genes associated with its children as well
     for go_id in tqdm(set(genes_by_go.keys()), desc="Adding genes of child terms"):
-        for go_child in bio_ontology.get_children("GO", go_id):
+        # children come out as ('GO', 'GO:0001234'), use only GO:0001234
+        for db_ns, go_child in bio_ontology.get_children("GO", go_id.upper()):
             genes_by_go[go_id] |= genes_by_go[go_child]
 
     # Reset defaultdict to dict
@@ -447,7 +449,7 @@ def build_networks(
         }
 
         if not prop_dict:
-            # logger.info(f"No statements for ID {go_id}")
+            tqdm.write(f"No statements for ID {go_id}")
             skipped += 1
             continue
 
