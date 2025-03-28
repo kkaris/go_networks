@@ -16,7 +16,6 @@ import pystow
 from neo4j.exceptions import CypherSyntaxError
 from indra.ontology.bio import bio_ontology
 from indra_cogex.client.neo4j_client import Neo4jClient
-from indra_cogex.representation import Node
 from indra_db.client.principal.curation import get_curations
 from ndex2 import NiceCXNetwork, create_nice_cx_from_server
 from tqdm import tqdm
