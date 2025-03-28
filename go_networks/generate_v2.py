@@ -922,12 +922,13 @@ def main(
     failed_to_set_public = []
     failed_to_update = []
     logger.info(f"Uploading {len(networks)} networks to NDEx")
-    for go_id, network_dict in tqdm(sorted(networks.items(), key=lambda x: x[0])):
+    for go_id, network_dict in tqdm(sorted(networks.items(), key=lambda x: x[0]),
+                                    desc="Uploading networks"):
         network = network_dict["network"]
         min_score = network_dict["min_score"]
         max_score = network_dict["max_score"]
 
-        # Update style network
+        # Update style network to match the scores of the current network
         _update_style_network(style_ncx, min_score=min_score, max_score=max_score)
 
         # Get uuid for GO term
