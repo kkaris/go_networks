@@ -525,7 +525,13 @@ def generate(
     go2genes_map = genes_by_go_id(regenerate=regenerate)
 
     # Filter GO IDs
+    if TEST_GO_ID:
+        logger.info(f"{TEST_GO_ID} has {len(go2genes_map[TEST_GO_ID])} genes "
+                    f"associated with it.")
     go2genes_map = filter_go_ids(go2genes_map)
+    if TEST_GO_ID and TEST_GO_ID not in go2genes_map:
+        logger.warning(f"Test GO ID {TEST_GO_ID} was filtered out.")
+        sys.exit(1)
 
     # Generate properties
     sif_props = generate_props(regenerate=regenerate)
