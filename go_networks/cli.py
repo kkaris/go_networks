@@ -3,8 +3,7 @@ from go_networks.generate_v2 import main as gen_networks
 import click
 
 
-TEST_SET = "d7acdc1d-a08f-11ec-b3be-0ac135e8bacf"
-NEW_TEST_SET = "5f4a543a-0a85-11f0-9806-005056ae3c32"
+TEST_SET = "5f4a543a-0a85-11f0-9806-005056ae3c32"
 STYLE_NX = "4c2006cd-9fef-11ec-b3be-0ac135e8bacf"
 PROD_SET = "bdba6a7a-488a-11ec-b3be-0ac135e8bacf"
 SECONDARY_SET = "303190ca-aac0-11ec-b3be-0ac135e8bacf"
@@ -52,10 +51,10 @@ def test(
 ):
     """Build a test network for the test set 5f4a543a-0a85-11f0-9806-005056ae3c32"""
     # Use the new test network set: 5f4a543a-0a85-11f0-9806-005056ae3c32
-    if NEW_TEST_SET == PROD_SET:
+    if TEST_SET == PROD_SET:
         click.secho("Test set and prod set are the same! Aborting...", fg="red")
     gen_networks(
-        network_set=NEW_TEST_SET,
+        network_set=TEST_SET,
         style_network=style_network,
         regenerate=regenerate_props,
         test_go_term=go_term,
