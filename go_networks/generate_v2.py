@@ -14,6 +14,7 @@ import ndex2.client
 import pandas as pd
 import pystow
 from neo4j.exceptions import CypherSyntaxError
+from requests import ReadTimeout
 from indra.ontology.bio import bio_ontology
 from indra_cogex.client.neo4j_client import Neo4jClient
 from indra_db.client.principal.curation import get_curations
@@ -562,13 +563,16 @@ def get_ncx_cache_from_set(ncx_set_uuid: str, refresh=False):
     return ncx_cache
 
 
-def get_go_uuid_mapping(set_uuid: str) -> Dict[str, str]:
+def get_go_uuid_mapping(set_uuid: str, request_retries: int = 3) -> Dict[str, str]:
     """Get mapping of GO IDs to UUID from NDEx
 
     Parameters
     ----------
     set_uuid :
         The UUID of the GO set
+    request_retries :
+        Number of retries per requests in case of timeouts. Default is 3. If more than
+        this many retries are needed, an error is raised.
 
     Returns
     -------
@@ -582,10 +586,18 @@ def get_go_uuid_mapping(set_uuid: str) -> Dict[str, str]:
     uuid_set = get_networks_in_set(network_set_id=set_uuid, client=ndex_web_client)
     go_uuid_mapping = {}
 
-    logger.info("Getting GO ID-uuid mapping")
-    for cx_uuid in tqdm(uuid_set):
+    for cx_uuid in tqdm(uuid_set, desc="Getting GO-UUID mapping"):
         # Get the info for the network
-        network_info = ndex_web_client.get_network_summary(cx_uuid)
+        for attempt in range(request_retries):
+            try:
+                network_info = ndex_web_client.get_network_summary(cx_uuid)
+                break
+            except ReadTimeout:
+                if attempt < request_retries - 1:
+                    tqdm(f"Read timeout for network {cx_uuid}, retrying...")
+                    sleep(1.25)
+                else:
+                    raise
 
         # Get the go id
         go_id = None
