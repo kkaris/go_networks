@@ -5,7 +5,7 @@ import json
 import logging
 import pickle
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, UTC
 from itertools import combinations
 from textwrap import dedent
 from typing import Dict, Iterator, Optional, Set, Tuple, Union, List
@@ -53,6 +53,10 @@ MAX_GENE_COUNT = 200
 DB_SOURCES = ["biogrid", "hprd", "signor", "phosphoelm", "signor", "biopax"]
 
 logger = logging.getLogger(__name__)
+
+
+def _get_utc_now(fmt: str = "%Y-%m-%d_%H-%M-%S") -> str:
+    return datetime.now(UTC).strftime(fmt)
 
 
 def get_curation_set() -> Set[int]:
@@ -432,9 +436,17 @@ def build_networks(
         Dict of assembled networks by go id
     """
     networks = {}
-    skipped = 0
+    skipped = []
+
     # Only pass the relevant parts of the pair_props dict
-    for go_id, gene_set in tqdm(go2genes_map.items(), total=len(go2genes_map)):
+    if not bio_ontology._initialized:
+        logger.info("Warming up bio_ontology...")
+        bio_ontology.initialize()
+    for go_id, gene_set in tqdm(
+        go2genes_map.items(),
+        total=len(go2genes_map),
+        desc="Assembling networks from props"
+    ):
         if TEST_GO_ID and go_id != TEST_GO_ID:
             continue
 
@@ -449,8 +461,7 @@ def build_networks(
         }
 
         if not prop_dict:
-            tqdm.write(f"No statements for ID {go_id}")
-            skipped += 1
+            skipped.append(go_id)
             continue
 
         gna = GoNetworkAssembler(
@@ -465,7 +476,13 @@ def build_networks(
             "min_score": min(gna.rel_scores),
         }
 
-    logger.info(f"Skipped {skipped} networks without statements")
+    logger.info(f"Skipped {len(skipped)} networks without statements")
+    if skipped:
+        utc_str = _get_utc_now()
+        fname = f"{utc_str}_skipped_go_ids.txt"
+        logger.info(f"Writing skipped GO IDs to file: {fname}")
+        with cache.join(name=fname).open("w") as f:
+            f.write('\n'.join(skipped))
     return networks
 
 
