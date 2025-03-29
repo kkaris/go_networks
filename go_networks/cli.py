@@ -86,6 +86,11 @@ def run(
     network_set: str,
 ):
     """Run the go network generation."""
+    click.secho(
+        f"Generating networks for "
+        f"{'production ' if network_set == PROD_SET else ''}set ({network_set})",
+        fg="green",
+    )
     gen_networks(
         network_set=network_set,
         style_network=style_network,
