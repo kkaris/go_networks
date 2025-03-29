@@ -1,3 +1,21 @@
+"""CLI for updating the go_networks
+
+This module provides a command line interface (CLI) for generating and updating
+the go_networks. It uses the `click` library to define commands and options.
+It allows users to generate networks for specific Gene Ontology (GO) terms,
+using a specified style network and other parameters.
+
+Usage:
+
+    python -m go_networks.cli test|run [OPTIONS]
+
+Commands:
+
+    test: Build a test network for the test set
+    run: Run the go network generation for a specified network set.
+
+"""
+
 from go_networks.generate_v2 import main as gen_networks
 
 import click
