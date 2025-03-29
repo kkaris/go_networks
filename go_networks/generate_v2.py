@@ -4,10 +4,12 @@ Generate GO Networks from a list of GO terms and the Sif dump.
 import json
 import logging
 import pickle
+import sys
 from collections import defaultdict
 from datetime import datetime, UTC
 from itertools import combinations
 from textwrap import dedent
+from time import sleep
 from typing import Dict, Iterator, Optional, Set, Tuple, Union, List
 
 import ndex2.client
@@ -821,6 +823,7 @@ def format_and_update_network(
     style_ncx: NiceCXNetwork,
     ndex_client: ndex2.client.Ndex2,
     cx_uuid: Optional[str] = None,
+    retries: int = 3,
 ) -> Tuple[str, Dict[str, bool]]:
     """Take a NiceCXNetwork and upload it to NDEx."""
     # Fixme: NiceCXNetwork.apply_style_from_network() does not exist in
@@ -830,34 +833,67 @@ def format_and_update_network(
     ncx.apply_style_from_network(style_ncx)
     failed_public = False
     failed_update = False
+
     # If we have a UUID, update the network
     if cx_uuid:
-        try:
-            ndex_client.update_cx_network(
-                cx_stream=ncx.to_cx_stream(), network_id=cx_uuid
-            )
-        except Exception as e:
-            logger.warning(f"Failed to update network {cx_uuid}: {e}")
-            failed_update = True
-        finally:
-            network_id = cx_uuid
+        for attempt in range(retries):
+            try:
+                ndex_client.update_cx_network(
+                    cx_stream=ncx.to_cx_stream(), network_id=cx_uuid
+                )
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    sleep(1)
+                else:
+                    tqdm.write(f"Failed to update network {cx_uuid}: {e}")
+                    failed_update = True
+
+        network_id = cx_uuid
+
     # If there is no UUID, create a new network
     else:
-        network_url = ncx.upload_to(client=ndex_client)
-        network_id = network_url.split("/")[-1]
-        try:
-            ndex_client.make_network_public(network_id)
-        except Exception as e:
-            logger.warning(f"Failed to make network {network_id} public: {e}")
-            failed_public = True
+        # Upload/create new network
+        for attempt in range(retries):
+            try:
+                network_url = ncx.upload_to(client=ndex_client)
+                network_id = network_url.split("/")[-1]
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    sleep(1)
+                else:
+                    tqdm.write(
+                        f"Warning: failed to upload new network {cx_uuid}: {e}"
+                    )
+                    failed_update = True
 
-        try:
-            ndex_client.add_networks_to_networkset(network_set_id, [network_id])
-        except Exception as e:
-            logger.warning(
-                f"Failed to add network {network_id} to network set "
-                f"{network_set_id}: {e}"
-            )
+        # Make the network public
+        if not failed_update:
+            for attempt in range(retries):
+                try:
+                    ndex_client.make_network_public(network_id)
+                    break
+                except Exception as e:
+                    if attempt < retries - 1:
+                        sleep(1)
+                    else:
+                        tqdm.write(f"Warning: failed to make network "
+                                   f"{network_id} public: {e}")
+                        failed_public = True
+
+        for attempt in range(retries):
+            try:
+                ndex_client.add_networks_to_networkset(network_set_id, [network_id])
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    sleep(1)
+                else:
+                    tqdm.write(
+                        f"Warning: failed to add network {network_id} to network"
+                        f"set {network_set_id}: {e}"
+                    )
 
     return network_id, {"public": failed_public, "update": failed_update}
 
