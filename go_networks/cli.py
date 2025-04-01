@@ -21,7 +21,7 @@ from go_networks.generate_v2 import main as gen_networks
 import click
 
 
-TEST_SET = "5f4a543a-0a85-11f0-9806-005056ae3c32"
+TEST_SET = "7de56fee-0f3f-11f0-9806-005056ae3c32"
 STYLE_NX = "4c2006cd-9fef-11ec-b3be-0ac135e8bacf"
 PROD_SET = "bdba6a7a-488a-11ec-b3be-0ac135e8bacf"
 SECONDARY_SET = "303190ca-aac0-11ec-b3be-0ac135e8bacf"
@@ -67,8 +67,8 @@ def test(
     style_network: str,
     ndex_server_style: str = "http://ndexbio.org",
 ):
-    """Build a test network for the test set 5f4a543a-0a85-11f0-9806-005056ae3c32"""
-    # Use the new test network set: 5f4a543a-0a85-11f0-9806-005056ae3c32
+    """Build a test network for the test set """
+    # Use the new test network set
     if TEST_SET == PROD_SET:
         click.secho("Test set and prod set are the same! Aborting...", fg="red")
     gen_networks(
