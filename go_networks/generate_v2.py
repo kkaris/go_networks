@@ -732,7 +732,30 @@ def add_to_new_set(add_from_set_uuid: str,
 def get_networks_and_date_for_user(
         user: str, ndex_client: Optional[ndex2.Ndex2] = None
 ) -> List[Dict[str, Union[datetime, str]]]:
-    """Get network UUIDs together with their creation and modification date"""
+    """Get network UUIDs together with their creation and modification date
+
+    Parameters
+    ----------
+    user :
+        The username for which to get the networks
+    ndex_client :
+        An optional NDEx client. If None, a new client will be created.
+
+    Returns
+    -------
+    :
+        A list of dictionaries containing the UUIDs and their creation and
+        modification times. Each dictionary will have the keys:
+            - "uuid": The UUID of the network
+            - "modificationTime": The datetime of the last modification
+            - "creationTime": The datetime of creation
+    """
+    def _get_go_id(props):
+        for prop in props:
+            if prop["predicateString"] == "GO ID":
+                return prop["value"]
+        return None
+
     def _get_dt(raw_ts: int) -> datetime:
         str_ts = str(raw_ts)
         return datetime.fromtimestamp(float(f"{str_ts[:10]}.{str_ts[10:]}"))
@@ -740,18 +763,25 @@ def get_networks_and_date_for_user(
     def _get_list(sums):
         out = []
         for s in sums:
-            out.append({"uuid": s["externalId"],
-                        "modificationTime": _get_dt(s["modificationTime"]),
-                        "creationTime": _get_dt(s["creationTime"])})
+            out.append(
+                {
+                    "uuid": s["externalId"],
+                    "modificationTime": _get_dt(s["modificationTime"]),
+                    "creationTime": _get_dt(s["creationTime"]),
+                    "go_id": _get_go_id(s["properties"]),
+                }
+            )
         return out
 
     # Get client if not provided
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
+    t = tqdm(desc="Getting networks for user")
     res = []
     summaries = ndex_client.get_user_network_summaries(username=user)
     res += _get_list(summaries)
+    t.update()
 
     # If the returned list has 1000 entries, it was likely cut off and we
     # need to make a new request with a new offset
@@ -761,6 +791,8 @@ def get_networks_and_date_for_user(
                                                            offset=offset)
         res += _get_list(summaries)
         offset += 1000
+        t.update()
+    t.close()
 
     # Check for double counting
     uuids = set()
