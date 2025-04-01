@@ -8,6 +8,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, UTC
 from itertools import combinations
+from pathlib import Path
 from textwrap import dedent
 from time import sleep
 from typing import Dict, Iterator, Optional, Set, Tuple, Union, List
@@ -636,6 +637,58 @@ def get_go_uuid_mapping(set_uuid: str, request_retries: int = 3) -> Dict[str, st
         if go_id is None:
             logger.warning(f"No GO ID found for network {cx_uuid}")
     return go_uuid_mapping
+
+
+def get_go_uuid_mapping_from_local_cache(
+    local_cache: Union[Path, str]
+) -> Dict[str, str]:
+    """Get the mapping of GO IDs to UUIDs from a local cache
+
+    Parameters
+    ----------
+    local_cache :
+        The path to the local cache directory containing pickled NCX files. This
+        should be a directory where each file is named <uuid>.pkl and contains
+        a pickled `NiceCXNetwork` object. The parameter can be a `Path` or a
+        string.
+
+    Returns
+    -------
+    :
+        A mapping from GO IDs to UUIDs based on the contents of the local cache.
+    """
+    # Assuming the cache contains pickled NDEX graph objects, named <uuid>.pkl
+    mapping = {}
+    local_cache = Path(local_cache)
+    for ncx_path in tqdm(
+        list(local_cache.glob("*.pkl")),
+        desc="Loading local GO-UUID mapping", unit_scale=True
+    ):
+        # Load the cached ncx file and extract the GO ID
+        with ncx_path.open("rb") as f:
+            ncx: ndex2.NiceCXNetwork = pickle.load(f)
+
+        go_id = None
+        prop_dict = ncx.get_network_attribute("GO ID")
+        if prop_dict.get("n") and prop_dict["n"] == "GO ID":
+            go_id = prop_dict["v"]
+
+        if go_id is None:
+            logger.warning(f"No GO ID found in cached network {ncx_path.name}")
+            continue
+
+        # Map the GO ID to the UUID
+        uuid = ncx_path.stem
+
+        if go_id in mapping:
+            tqdm.write(
+                f"WARNING: Duplicate GO ID found: {go_id} for UUIDs {mapping[go_id]} "
+                f"and {uuid}. Overwriting to keep the latest one."
+            )
+        mapping[go_id] = uuid
+
+    logger.info(f"Loaded {len(mapping)} GO ID to UUID mappings from local cache")
+    return mapping
 
 
 def update_coordinates_for_network_set(set_uuid: str):
