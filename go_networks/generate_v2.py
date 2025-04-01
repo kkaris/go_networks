@@ -403,11 +403,13 @@ def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
     logger.info("Adding genes of child terms to the parent terms")
     bio_ontology.initialize()
 
-    # For each term, add the genes associated with its children as well
-    for go_id in tqdm(set(genes_by_go.keys()), desc="Adding genes of child terms"):
+    # For each term, add the genes associated with it to its parents as well
+    for go_id in tqdm(set(genes_by_go), desc="Adding genes to parent terms"):
         # children come out as ('GO', 'GO:0001234'), use only GO:0001234
-        for db_ns, go_child in bio_ontology.get_children("GO", go_id.upper()):
-            genes_by_go[go_id] |= genes_by_go[go_child]
+        assert go_id.isupper()
+        for db_ns, go_parent in bio_ontology.get_parents("GO", go_id):
+            assert go_parent.isupper()
+            genes_by_go[go_parent] |= genes_by_go[go_id]
 
     # Reset defaultdict to dict
     genes_by_go = dict(genes_by_go)
