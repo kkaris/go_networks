@@ -414,6 +414,30 @@ def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
     # Reset defaultdict to dict
     genes_by_go = dict(genes_by_go)
 
+    # DEBUG section
+    import requests
+    def get_gene_number_web(go_term, indirect):
+        node_jsons = requests.post(
+                'https://discovery.indra.bio/api/get_genes_for_go_term',
+                json={"go_term": ["GO", go_term], "include_indirect": indirect}
+        ).json()
+        return {jd["data"]["name"] for jd in node_jsons}
+    for go_id, genes in tqdm(genes_by_go.items(), desc="Checking gene counts against CoGEx"):
+        cogex_set = get_gene_number_web(go_id, indirect=True)
+        if genes != cogex_set:
+            import ipdb
+            tqdm.write("WARNING: "
+                f"Mismatch in gene counts for {go_id}: "
+                f"local count {len(genes)} vs CoGEx count {len(cogex_set)}. "
+                f"Investigating with IPDB."
+            )
+            # Drop into ipdb to investigate
+            ipdb.set_trace()
+            raise RuntimeError(
+                f"Mismatch in gene counts between local and CoGEx for {go_id}. Please "
+                "investigate."
+            )
+
     # Save to cache
     with GO_MAPPINGS.open(mode="wb") as fw:
         logger.info("Caching GO mappings")
