@@ -392,12 +392,15 @@ def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
     logger.info("Loading GO mapping from database")
 
     # Set initial mapping
-    genes_by_go = defaultdict(set)
+    genes_by_go = {}
     for go_curie, gene_symbol in tqdm(go_term_gene_query(),
                                       desc="Loading GO-gene associations"):
-        # Use upper case for GO IDs so we get GO:0001234 instead of go:0001234 so that
-        # it corresponds to the bio_ontology
-        genes_by_go[go_curie.upper()].add(gene_symbol)
+        # Use upper case for GO IDs so we get GO:0001234 instead of go:0001234 so we
+        # can match the case in the bio_ontology
+        if go_curie.upper() not in genes_by_go:
+            # Initialize the set for this go id
+            genes_by_go[go_curie.upper()] = set()
+        genes_by_go[go_curie].add(gene_symbol)
 
     # Load bio ontology
     logger.info("Adding genes of child terms to the parent terms")
@@ -409,34 +412,10 @@ def genes_by_go_id(regenerate: bool = False) -> Dict[str, Set[str]]:
         assert go_id.isupper()
         for db_ns, go_parent in bio_ontology.get_parents("GO", go_id):
             assert go_parent.isupper()
+            if go_parent not in genes_by_go:
+                # If the parent doesn't exist in the mapping, initialize it
+                genes_by_go[go_parent] = set()
             genes_by_go[go_parent] |= genes_by_go[go_id]
-
-    # Reset defaultdict to dict
-    genes_by_go = dict(genes_by_go)
-
-    # DEBUG section
-    import requests
-    def get_gene_number_web(go_term, indirect):
-        node_jsons = requests.post(
-                'https://discovery.indra.bio/api/get_genes_for_go_term',
-                json={"go_term": ["GO", go_term], "include_indirect": indirect}
-        ).json()
-        return {jd["data"]["name"] for jd in node_jsons}
-    for go_id, genes in tqdm(genes_by_go.items(), desc="Checking gene counts against CoGEx"):
-        cogex_set = get_gene_number_web(go_id, indirect=True)
-        if genes != cogex_set:
-            import ipdb
-            tqdm.write("WARNING: "
-                f"Mismatch in gene counts for {go_id}: "
-                f"local count {len(genes)} vs CoGEx count {len(cogex_set)}. "
-                f"Investigating with IPDB."
-            )
-            # Drop into ipdb to investigate
-            ipdb.set_trace()
-            raise RuntimeError(
-                f"Mismatch in gene counts between local and CoGEx for {go_id}. Please "
-                "investigate."
-            )
 
     # Save to cache
     with GO_MAPPINGS.open(mode="wb") as fw:
