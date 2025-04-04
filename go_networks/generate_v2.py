@@ -1113,6 +1113,7 @@ def make_network_public_and_visible(
             "readOnly": True
         },
         ndex_client=ndex_client,
+        attempts=attempts,
     )
     return res
 
