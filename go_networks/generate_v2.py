@@ -20,6 +20,7 @@ from neo4j.exceptions import CypherSyntaxError
 from requests import ReadTimeout
 from indra.ontology.bio import bio_ontology
 from indra_cogex.client.neo4j_client import Neo4jClient
+# Todo: use the CurationCache from CoGEx?
 from indra_db.client.principal.curation import get_curations
 from ndex2 import NiceCXNetwork, create_nice_cx_from_server
 from tqdm import tqdm
@@ -922,6 +923,121 @@ def delete_networks(network_uuids: Set[str], ndex_client: ndex2.Ndex2):
         logger.warning(f"{len(failed)} deletions failed")
 
     return failed
+
+
+def make_network_writable(
+    uuid: str,
+    ndex_client: Optional[ndex2.Ndex2] = None,
+    attempts: int = 3
+) -> bool:
+    """Change the network properties to make it writable.
+
+    Parameters
+    ----------
+    uuid :
+        The UUID of the network to make writable.
+    ndex_client :
+        The ndex client to use for making the network writable. If None, a new
+        client will be created using `get_ndex_web_client()` for this call only.
+    attempts :
+        The number of attempts to retry making the network writable in case of
+        network issues. Default is 3.
+
+    Returns
+    -------
+
+    """
+    if ndex_client is None:
+        ndex_client = get_ndex_web_client()
+
+    for attempt in range(attempts):
+        try:
+            res = ndex_client.set_network_system_properties(
+                network_id=uuid,
+                network_properties={
+                    # Make the network writable
+                    "readOnly": False
+                }
+            )
+            success = True
+            return success
+        except Exception as e:
+            if attempt < attempts - 1:
+                # Retry on failure
+                tqdm.write(
+                    f"Attempt {attempt + 1} to make network {uuid} writable failed: {e}. "
+                    f"Retrying..."
+                )
+                sleep(1)
+            else:
+                # Failed after all attempts
+                tqdm.write(
+                    f"Failed to make network {uuid} writable after {attempts} attempts: {e}. "
+                    f"Please check the network manually."
+                )
+                return False
+
+    # We should not reach this point, but print a message just in case
+    tqdm.write(f"WARNING: Ended loop in make_network_writable for uuid {uuid}. "
+               f"This should not happen, please check the logic.")
+    return False
+
+
+def make_network_readonly(
+    uuid: str,
+    ndex_client: Optional[ndex2.Ndex2] = None,
+    attempts: int = 3
+) -> bool:
+    """Change the network properties to make it writable.
+
+    Parameters
+    ----------
+    uuid :
+        The UUID of the network to make writable.
+    ndex_client :
+        The ndex client to use for making the network writable. If None, a new
+        client will be created using `get_ndex_web_client()` for this call only.
+    attempts :
+        The number of attempts to retry making the network writable in case of
+        network issues. Default is 3.
+
+    Returns
+    -------
+
+    """
+    if ndex_client is None:
+        ndex_client = get_ndex_web_client()
+
+    for attempt in range(attempts):
+        try:
+            res = ndex_client.set_network_system_properties(
+                network_id=uuid,
+                network_properties={
+                    # Make the network writable
+                    "readOnly": True
+                }
+            )
+            return True
+        except Exception as e:
+            if attempt < attempts - 1:
+                # Retry on failure
+                tqdm.write(
+                    f"Attempt {attempt + 1} to make network {uuid} writable failed: {e}. "
+                    f"Retrying..."
+                )
+                sleep(1)
+            else:
+                # Failed after all attempts
+                tqdm.write(
+                    f"Failed to make network {uuid} writable after {attempts} attempts: {e}. "
+                    f"Please check the network manually."
+                )
+                return False
+
+    # We should not reach this point, but print a message just in case
+    tqdm.write(f"WARNING: Ended loop in make_network_writable for uuid {uuid}. "
+               f"This should not happen, please check the logic.")
+    return False
 
 
 def make_network_public_and_visible(
