@@ -925,7 +925,7 @@ def delete_networks(network_uuids: Set[str], ndex_client: ndex2.Ndex2):
     return failed
 
 
-def set_network_system_properties(
+def set_network_properties(
     uuid: str,
     system_properties: Dict[str, Union[bool, str]],
     ndex_client: Optional[ndex2.Ndex2] = None,
@@ -994,7 +994,7 @@ def set_network_system_properties(
                 raise e
 
     raise RuntimeError(
-        f"WARNING: Ended retry loop in set_network_system_properties for uuid "
+        f"WARNING: Ended retry loop in set_network_properties for uuid "
         f"{uuid}. This should not happen, please check the logic."
     )
 
@@ -1025,7 +1025,7 @@ def make_network_writable(
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
-    return set_network_system_properties(
+    return set_network_properties(
         uuid=uuid,
         system_properties={
             # Make the network writable
@@ -1062,7 +1062,7 @@ def make_network_readonly(
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
-    return set_network_system_properties(
+    return set_network_properties(
         uuid=uuid,
         system_properties={
             # Make the network readonly
@@ -1098,7 +1098,7 @@ def make_network_public_and_visible(
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
-    res = set_network_system_properties(
+    res = set_network_properties(
         uuid=uuid,
         system_properties={
             # Showcase: network will display on the home page for other users
