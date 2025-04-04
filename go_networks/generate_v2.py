@@ -1125,9 +1125,27 @@ def format_and_update_network(
     if cx_uuid:
         for attempt in range(retries):
             try:
+
+                # Make network read/write before updating it, otherwise this will fail
+                success = make_network_writable(
+                    cx_uuid,
+                    ndex_client=ndex_client,
+                    attempts=1
+                )
+                if not success:
+                    raise Exception("Failed to make network writable before updating.")
                 ndex_client.update_cx_network(
                     cx_stream=ncx.to_cx_stream(), network_id=cx_uuid
                 )
+
+                # Successfully updated the network, now make it readonly again
+                success = make_network_readonly(
+                    cx_uuid,
+                    ndex_client=ndex_client,
+                    attempts=1
+                )
+                if not success:
+                    raise Exception("Failed to make network readonly after updating.")
                 break
             except Exception as e:
                 if attempt < retries - 1:
@@ -1157,17 +1175,12 @@ def format_and_update_network(
 
         # Make the network public
         if not failed_update:
-            for attempt in range(retries):
-                try:
-                    ndex_client.make_network_public(network_id)
-                    break
-                except Exception as e:
-                    if attempt < retries - 1:
-                        sleep(1)
-                    else:
-                        tqdm.write(f"Warning: failed to make network "
-                                   f"{network_id} public: {e}")
-                        failed_public = True
+            # This sets the network to read-only
+            successful = make_network_public_and_visible(
+                network_id, attempts=retries
+            )
+            if not successful:
+                failed_public = True
 
         for attempt in range(retries):
             try:
