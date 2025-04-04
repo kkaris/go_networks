@@ -885,7 +885,7 @@ def get_networks_before_date_for_user(
 ):
     """Get all networks created and modified before the provided date"""
     # Check that the cutoff date is valid
-    utcnow = datetime.utcnow()
+    utcnow = datetime.now(UTC)
     if cutoff_date > utcnow:
         raise ValueError(
             f"Cutoff date is in the future (year={cutoff_date.year}, month="
