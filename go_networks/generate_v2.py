@@ -925,11 +925,85 @@ def delete_networks(network_uuids: Set[str], ndex_client: ndex2.Ndex2):
     return failed
 
 
+def set_network_system_properties(
+    uuid: str,
+    system_properties: Dict[str, Union[bool, str]],
+    ndex_client: Optional[ndex2.Ndex2] = None,
+    attempts: int = 3
+) -> str:
+    """Set the system properties for a network
+
+    Parameters
+    ----------
+    uuid :
+        The UUID of the network to set the system properties for.
+    system_properties :
+        A dictionary of system properties to set for the network. The keys and their
+        values should be any of:
+        - readOnly: (boolean : True or False)
+        - index_level: (str : 'NONE', 'META', or 'ALL')
+        - visibility: (str : 'public', 'private', or 'hidden')
+        - showcase: (boolean : True or False)
+    ndex_client :
+        The ndex client to use for making the network writable. If None, a new
+        client will be created using `get_ndex_web_client()` for this call only.
+    attempts :
+        The number of attempts to retry setting the network system properties in case of
+        network issues. Default is 3. If more than this many attempts fail, an error will
+        be raised.
+
+    Returns
+    -------
+    :
+        The response from the NDEx API after setting the network properties.
+    """
+    if not system_properties:
+        raise ValueError("system_properties must be provided and cannot be empty")
+
+    if not set(system_properties.keys()) & {"readOnly", "index_level", "visibility",
+                                            "showcase"}:
+        raise ValueError(
+            "At least one of the following keys must be provided in system_properties: "
+            "`readOnly`, `index_level`, `visibility`, `showcase`"
+        )
+
+    if ndex_client is None:
+        ndex_client = get_ndex_web_client()
+
+    for attempt in range(attempts):
+        try:
+            res = ndex_client.set_network_system_properties(
+                network_id=uuid,
+                network_properties=system_properties
+            )
+            return res  # Return the response if successful
+        except Exception as e:
+            if attempt < attempts - 1:
+                # Retry on failure
+                tqdm.write(
+                    f"Attempt {attempt + 1} to make network {uuid} writable failed: {e}. "
+                    f"Retrying..."
+                )
+                sleep(1)
+            else:
+                # Failed after all attempts
+                tqdm.write(
+                    f"Failed to make network {uuid} writable after {attempts} attempts: "
+                    f"{e}. Please check the network manually."
+                )
+                raise e
+
+    raise RuntimeError(
+        f"WARNING: Ended retry loop in set_network_system_properties for uuid "
+        f"{uuid}. This should not happen, please check the logic."
+    )
+
+
 def make_network_writable(
     uuid: str,
     ndex_client: Optional[ndex2.Ndex2] = None,
     attempts: int = 3
-) -> bool:
+) -> str:
     """Change the network properties to make it writable.
 
     Parameters
@@ -945,106 +1019,65 @@ def make_network_writable(
 
     Returns
     -------
-
+    :
+        Response from the NDEx API after setting the network properties.
     """
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
-    for attempt in range(attempts):
-        try:
-            res = ndex_client.set_network_system_properties(
-                network_id=uuid,
-                network_properties={
-                    # Make the network writable
-                    "readOnly": False
-                }
-            )
-            success = True
-            return success
-        except Exception as e:
-            if attempt < attempts - 1:
-                # Retry on failure
-                tqdm.write(
-                    f"Attempt {attempt + 1} to make network {uuid} writable failed: {e}. "
-                    f"Retrying..."
-                )
-                sleep(1)
-            else:
-                # Failed after all attempts
-                tqdm.write(
-                    f"Failed to make network {uuid} writable after {attempts} attempts: {e}. "
-                    f"Please check the network manually."
-                )
-                return False
-
-    # We should not reach this point, but print a message just in case
-    tqdm.write(f"WARNING: Ended loop in make_network_writable for uuid {uuid}. "
-               f"This should not happen, please check the logic.")
-    return False
+    return set_network_system_properties(
+        uuid=uuid,
+        system_properties={
+            # Make the network writable
+            "readOnly": False,
+        },
+        ndex_client=ndex_client,
+        attempts=attempts,
+    )
 
 
 def make_network_readonly(
     uuid: str,
     ndex_client: Optional[ndex2.Ndex2] = None,
     attempts: int = 3
-) -> bool:
-    """Change the network properties to make it writable.
+) -> str:
+    """Change the network properties to make it readonly.
 
     Parameters
     ----------
     uuid :
-        The UUID of the network to make writable.
+        The UUID of the network to make readonly.
     ndex_client :
-        The ndex client to use for making the network writable. If None, a new
+        The ndex client to use for making the network readonly. If None, a new
         client will be created using `get_ndex_web_client()` for this call only.
     attempts :
-        The number of attempts to retry making the network writable in case of
+        The number of attempts to retry making the network readonly in case of
         network issues. Default is 3.
 
     Returns
     -------
-
+    :
+        Response from the NDEx API after setting the network properties.
     """
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
-    for attempt in range(attempts):
-        try:
-            res = ndex_client.set_network_system_properties(
-                network_id=uuid,
-                network_properties={
-                    # Make the network writable
-                    "readOnly": True
-                }
-            )
-            return True
-        except Exception as e:
-            if attempt < attempts - 1:
-                # Retry on failure
-                tqdm.write(
-                    f"Attempt {attempt + 1} to make network {uuid} writable failed: {e}. "
-                    f"Retrying..."
-                )
-                sleep(1)
-            else:
-                # Failed after all attempts
-                tqdm.write(
-                    f"Failed to make network {uuid} writable after {attempts} attempts: {e}. "
-                    f"Please check the network manually."
-                )
-                return False
-
-    # We should not reach this point, but print a message just in case
-    tqdm.write(f"WARNING: Ended loop in make_network_writable for uuid {uuid}. "
-               f"This should not happen, please check the logic.")
-    return False
+    return set_network_system_properties(
+        uuid=uuid,
+        system_properties={
+            # Make the network readonly
+            "readOnly": True,
+        },
+        ndex_client=ndex_client,
+        attempts=attempts,
+    )
 
 
 def make_network_public_and_visible(
     uuid: str,
     ndex_client: Optional[ndex2.Ndex2] = None,
     attempts: int = 3
-) -> bool:
+) -> str:
     """Make a network public and visible on NDEx.
 
     Parameters
@@ -1065,43 +1098,23 @@ def make_network_public_and_visible(
     if ndex_client is None:
         ndex_client = get_ndex_web_client()
 
-    for attempt in range(attempts):
-        try:
-            res = ndex_client.set_network_system_properties(
-                network_id=uuid,
-                network_properties={
-                    # Showcase: network will display on the home page for other users
-                    "showcase": True,
-                    # PUBLIC: Network can be found or read by anyone
-                    "visibility": "PUBLIC",
-                    # "Full index on the network" (unclear, but was recommended by
-                    # the ndex group)
-                    "index_level": "ALL",
-                    # Readonly access makes any attempt to edit the network fail,
-                    # Has to be set to False before delete or update.
-                    "readOnly": True
-                }
-            )
-            return True
-        except Exception as e:
-            if attempt < attempts - 1:
-                # Retry on failure
-                tqdm.write(
-                    f"Attempt {attempt + 1} to make network {uuid} public failed: {e}. "
-                    f"Retrying..."
-                )
-                sleep(1)
-            else:
-                tqdm.write(
-                    f"Failed to make network {uuid} public after {attempts} attempts: {e}. "
-                    f"Please check the network manually."
-                )
-                return False
-
-    # We shouldn't reach this point
-    tqdm.write(f"WARNING: Ended loop in make_network_public_and_visible for uuid "
-               f"{uuid}. This should not happen, please check the logic.")
-    return False
+    res = set_network_system_properties(
+        uuid=uuid,
+        system_properties={
+            # Showcase: network will display on the home page for other users
+            "showcase": True,
+            # PUBLIC: Network can be found or read by anyone
+            "visibility": "PUBLIC",
+            # "Full index on the network" (unclear, but was recommended by
+            # the ndex group)
+            "index_level": "ALL",
+            # Readonly access makes any attempt to edit the network fail,
+            # Has to be set to False before delete or update.
+            "readOnly": True
+        },
+        ndex_client=ndex_client,
+    )
+    return res
 
 
 def format_and_update_network(
