@@ -924,6 +924,67 @@ def delete_networks(network_uuids: Set[str], ndex_client: ndex2.Ndex2):
     return failed
 
 
+def make_network_public_and_visible(
+    uuid: str,
+    ndex_client: Optional[ndex2.Ndex2] = None,
+    attempts: int = 3
+) -> bool:
+    """Make a network public and visible on NDEx.
+
+    Parameters
+    ----------
+    uuid :
+        The UUID of the network to make public.
+    ndex_client :
+        An optional NDEx client. If None, a new client will be created.
+    attempts :
+        The number of time to retry making the network public in case of network
+        issues. Default is 3.
+
+    Returns
+    -------
+    :
+        True if the request was successfully processed.
+    """
+    if ndex_client is None:
+        ndex_client = get_ndex_web_client()
+
+    for attempt in range(attempts):
+        try:
+            res = ndex_client.set_network_system_properties(
+                network_id=uuid,
+                network_properties={
+                    # Showcase: network will display on the home page for other users
+                    "showcase": True,
+                    # PUBLIC: Network can be found or read by anyone
+                    "visibility": "PUBLIC",
+                    # "Full index on the network" (unclear, but was recommended by
+                    # the ndex group)
+                    "index_level": "ALL",
+                    # Readonly access makes any attempt to edit the network fail,
+                    # Has to be set to False before delete or update.
+                    "readOnly": True
+                }
+            )
+            return True
+        except Exception as e:
+            if attempt < attempts - 1:
+                # Retry on failure
+                tqdm.write(
+                    f"Attempt {attempt + 1} to make network {uuid} public failed: {e}. "
+                    f"Retrying..."
+                )
+                sleep(1)
+            else:
+                tqdm.write(
+                    f"Failed to make network {uuid} public after {attempts} attempts: {e}. "
+                    f"Please check the network manually."
+                )
+                return False
+
+    return True
+
+
 def format_and_update_network(
     ncx: NiceCXNetwork,
     network_set_id: str,
