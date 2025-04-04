@@ -982,7 +982,10 @@ def make_network_public_and_visible(
                 )
                 return False
 
-    return True
+    # We shouldn't reach this point
+    tqdm.write(f"WARNING: Ended loop in make_network_public_and_visible for uuid "
+               f"{uuid}. This should not happen, please check the logic.")
+    return False
 
 
 def format_and_update_network(
